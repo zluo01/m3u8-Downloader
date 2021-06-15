@@ -282,10 +282,9 @@ func main() {
 	if mpl.Count() > 0 {
 		log.Println("[+] Total", mpl.Count(), "files to download")
 
-		directory := *OutFile
-		if directory == "" {
-			directory = "total_" + filename(mpl.Segments[0].URI)
-			directory = strings.Split(directory, ".")[0]
+		if *OutFile == "" {
+			*OutFile = "total_" + filename(mpl.Segments[0].URI)
+			directory = strings.Split(*OutFile, ".")[0]
 		}
 
 		if _, err := os.Stat(directory); os.IsNotExist(err) {
