@@ -40,6 +40,7 @@ var (
 	Timeout   = flag.Duration("t", time.Second*30, "timeout")
 	Proxy     = flag.String("p", "", "proxy. Example: http://127.0.0.1:8080")
 	Headers   = flag.String("H", "", "http header. Example: Referer:https://www.example.com")
+	Start     = flag.Int("s", 0, "Start chunk number")
 )
 
 func init() {
@@ -52,6 +53,10 @@ func init() {
 
 	if *ThreadNum <= 0 {
 		*ThreadNum = 10
+	}
+
+	if *Start <= 0 {
+		*Start = 0
 	}
 
 	if *Retry <= 0 {
@@ -81,7 +86,7 @@ func start(mpl *m3u8.MediaPlaylist) {
 
 	var count = int(mpl.Count())
 	go func(count int) {
-		for i := 0; i < count; i++ {
+		for i := *Start; i < count; i++ {
 			pool.Push(i, mpl.Segments[i], mpl.Key)
 		}
 		pool.CloseQueue()
@@ -239,7 +244,7 @@ func formatURI(base *url.URL, u string) (string, error) {
 	return obj.String(), nil
 }
 
-func combinedFile() {
+func combinedFiles() {
 	files, err := ioutil.ReadDir(directory)
 	if err != nil {
 		log.Fatal(err)
@@ -269,6 +274,33 @@ func combinedFile() {
 		bar.Increment()
 	}
 	bar.Finish()
+}
+
+func cleanupDirectory() error {
+	d, err := os.Open(directory)
+	if err != nil {
+		return err
+	}
+
+	names, err := d.Readdirnames(-1)
+	if err != nil {
+		return err
+	}
+	for _, name := range names {
+		if err = os.RemoveAll(filepath.Join(directory, name)); err != nil {
+			return err
+		}
+	}
+
+	if err := d.Close(); err != nil {
+		return err
+	}
+
+	if err := os.Remove(directory); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func main() {
@@ -315,8 +347,14 @@ func main() {
 		}
 
 		start(mpl)
-
 		log.Print("[+] Download succeed, saved to", directory, "cost:", time.Now().Sub(t))
-		combinedFile()
+
+		combinedFiles()
+		log.Print("[+] Files combined to", *OutFile)
+
+		if err := cleanupDirectory(); err != nil {
+			log.Fatal("[-] Fail to delete directory:", directory, err)
+		}
+		log.Print("[+] Successfully cleanup directory:", directory)
 	}
 }

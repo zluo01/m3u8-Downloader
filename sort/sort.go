@@ -2,9 +2,9 @@ package sort
 
 import (
 	"log"
+	"math/big"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 	"unicode"
 )
@@ -25,11 +25,10 @@ type FileSorter struct {
 }
 
 func CompareStringNumber(file1, file2 os.FileInfo) bool {
-	return extractNumberFromString(file1.Name(), 0) < extractNumberFromString(file2.Name(), 0)
+	return extractNumberFromString(file1.Name(), 0).Cmp(extractNumberFromString(file2.Name(), 0)) == -1
 }
 
-// Todo fix situation with large number
-func extractNumberFromString(str string, size int) int {
+func extractNumberFromString(str string, size int) *big.Int {
 	strSlice := make([]string, 0)
 	for _, v := range str {
 		if unicode.IsDigit(v) {
@@ -37,16 +36,14 @@ func extractNumberFromString(str string, size int) int {
 		}
 	}
 
-	if size == 0 { // default
-		num, err := strconv.Atoi(strings.Join(strSlice, ""))
-		if err != nil {
-			log.Fatal(err)
-		}
-		return num
+	numStr := strings.Join(strSlice, "") // default use all numbers
+	if size != 0 {
+		numStr = strSlice[size-1]
 	}
-	num, err := strconv.Atoi(strSlice[size-1])
-	if err != nil {
-		log.Fatal(err)
+
+	num, ok := new(big.Int).SetString(numStr, 10)
+	if !ok {
+		log.Fatal("Fail to parse string into number ", numStr)
 	}
 	return num
 }

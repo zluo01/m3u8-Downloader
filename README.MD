@@ -15,12 +15,22 @@ Usage:
     ./m3u8-Downloader-Go [Options]
 
 Options:
-    -H,--header           http header. Example: Referer:http://www.example.com
-    -f,--m3u8-file        local m3u8 file
-    -n,--thread-number    thread number [default: 10]
-    -o,--out-file         out file
-    -p,--proxy            proxy. Example: http://127.0.0.1:8080
-    -r,--retry            number of retries [default: 3]
-    -t,--timeout          timeout [default: 30s]
-    -u,--url              url of m3u8 file
+  -H string
+        http header. Example: Referer:https://www.example.com
+  -f string
+        local m3u8 file
+  -n int
+        thread number (default 10)
+  -o string
+        out file
+  -p string
+        proxy. Example: http://127.0.0.1:8080
+  -r int
+        number of retries (default 3)
+  -s int
+        Start chunk number
+  -t duration
+        timeout (default 30s)
+  -u string
+        url of m3u8 file
 ```
