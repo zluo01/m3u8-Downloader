@@ -11,7 +11,6 @@ import (
 	"io/ioutil"
 	"log"
 	"m3u8-Downloader-Go/decrypter"
-	"m3u8-Downloader-Go/hackpool"
 	"m3u8-Downloader-Go/request"
 	"m3u8-Downloader-Go/sort"
 	"net/url"
@@ -47,7 +46,7 @@ func init() {
 	flag.Parse()
 
 	if *URL == "" && *File == "" {
-		log.Print("You must set the -u or -f parameter")
+		log.Print("[-] You must set the -u or -f parameter")
 		flag.Usage()
 	}
 
@@ -82,17 +81,40 @@ func init() {
 }
 
 func start(mpl *m3u8.MediaPlaylist) {
-	pool := hackpool.New(*ThreadNum, download)
-
 	var count = int(mpl.Count())
-	go func(count int) {
-		for i := *Start; i < count; i++ {
-			pool.Push(i, mpl.Segments[i], mpl.Key)
-		}
-		pool.CloseQueue()
-	}(count)
 
-	pool.Run(count)
+	// make sure buffer size is greater than go routine size
+	var size = count
+	if size <= *ThreadNum {
+		size = *ThreadNum + 1
+	}
+
+	var ch = make(chan []interface{}, size)
+	var wg sync.WaitGroup
+
+	wg.Add(*ThreadNum)
+	for i := 0; i < *ThreadNum; i++ {
+		go func() {
+			for {
+				args, ok := <-ch
+				if !ok {
+					wg.Done()
+					return
+				}
+				download(args) // do the thing
+			}
+		}()
+	}
+
+	bar := pb.StartNew(count)
+	for i := 0; i < count; i++ {
+		ch <- []interface{}{i, mpl.Segments[i], mpl.Key}
+		bar.Increment()
+	}
+
+	close(ch)
+	wg.Wait()
+	bar.Finish()
 }
 
 func getKey(url string) ([]byte, error) {
@@ -114,14 +136,14 @@ func getKey(url string) ([]byte, error) {
 	return key, nil
 }
 
-func download(args ...interface{}) {
+func download(args []interface{}) {
 	id := args[0].(int)
 	segment := args[1].(*m3u8.MediaSegment)
 	globalKey := args[2].(*m3u8.Key)
 
 	data, err := Client.Get(segment.URI, headers, *Retry)
 	if err != nil {
-		log.Fatal("[-] Download failed:", id, err)
+		log.Fatal("[-] Download failed: ", id, ", Error: ", err)
 	}
 
 	var keyURL, ivStr string
@@ -137,13 +159,13 @@ func download(args ...interface{}) {
 		var key, iv []byte
 		key, err = getKey(keyURL)
 		if err != nil {
-			log.Fatal("[-] Download key failed:", keyURL, err)
+			log.Fatal("[-] Download key failed: ", keyURL, err)
 		}
 
 		if ivStr != "" {
 			iv, err = hex.DecodeString(strings.TrimPrefix(ivStr, "0x"))
 			if err != nil {
-				log.Fatal("[-] Decode iv failed:", err)
+				log.Fatal("[-] Decode iv failed: ", err)
 			}
 		} else {
 			iv = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, byte(id)}
@@ -151,7 +173,7 @@ func download(args ...interface{}) {
 
 		data, err = decrypter.Decrypt(data, key, iv)
 		if err != nil {
-			log.Fatal("[-] Decrypt failed:", err)
+			log.Fatal("[-] Decrypt failed: ", err)
 		}
 	}
 
@@ -307,7 +329,7 @@ func main() {
 	var err error
 	Client, err = request.New(*Timeout, *Proxy)
 	if err != nil {
-		log.Fatal("[-] Init failed:", err)
+		log.Fatal("[-] Init failed: ", err)
 	}
 
 	t := time.Now()
@@ -316,24 +338,24 @@ func main() {
 	if *File != "" {
 		data, err = ioutil.ReadFile(*File)
 		if err != nil {
-			log.Fatal("[-] Load m3u8 file failed:", err)
+			log.Fatal("[-] Load m3u8 file failed: ", err)
 		}
 	} else {
 		data, err = DownloadM3u8(*URL)
 		if err != nil {
-			log.Fatal("[-] Download m3u8 file failed:", err)
+			log.Fatal("[-] Download m3u8 file failed: ", err)
 		}
 	}
 
 	mpl, err := ParseM3u8(data)
 	if err != nil {
-		log.Fatal("[-] Parse m3u8 file failed:", err)
+		log.Fatal("[-] Parse m3u8 file failed: ", err)
 	} else {
 		log.Print("[+] Parse m3u8 file succeed")
 	}
 
 	if mpl.Count() > 0 {
-		log.Print("[+] Total", mpl.Count(), "files to download")
+		log.Print("[+] Total ", mpl.Count(), " files to download")
 
 		if *OutFile == "" {
 			*OutFile = "total_" + filename(mpl.Segments[0].URI)
@@ -347,14 +369,14 @@ func main() {
 		}
 
 		start(mpl)
-		log.Print("[+] Download succeed, saved to", directory, "cost:", time.Now().Sub(t))
+		log.Print("[+] Download succeed, saved to ", directory, ", cost:", time.Now().Sub(t))
 
 		combinedFiles()
-		log.Print("[+] Files combined to", *OutFile)
+		log.Print("[+] Files combined to ", *OutFile)
 
 		if err := cleanupDirectory(); err != nil {
-			log.Fatal("[-] Fail to delete directory:", directory, err)
+			log.Fatal("[-] Fail to delete directory: ", directory, ", Error: ", err)
 		}
-		log.Print("[+] Successfully cleanup directory:", directory)
+		log.Print("[+] Successfully cleanup directory: ", directory)
 	}
 }
