@@ -6,11 +6,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/cheggaaa/pb/v3"
 	"github.com/grafov/m3u8"
+	"io"
 	"io/ioutil"
 	"log"
 	"m3u8-Downloader-Go/decrypter"
 	"m3u8-Downloader-Go/hackpool"
+	"m3u8-Downloader-Go/sort"
 	"m3u8-Downloader-Go/zhttp"
 	"net/url"
 	"os"
@@ -250,6 +253,38 @@ func formatURI(base *url.URL, u string) (string, error) {
 	return obj.String(), nil
 }
 
+func combinedFile() {
+	files, err := ioutil.ReadDir(directory)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	output, err := os.OpenFile(*OutFile, os.O_CREATE|os.O_TRUNC|os.O_RDWR|os.O_APPEND, 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func(f *os.File) {
+		err := f.Close()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}(output)
+
+	sort.Compare(sort.CompareStringNumber).Sort(files)
+	bar := pb.StartNew(len(files))
+	for _, i := range files {
+		input, err := os.Open(path.Join(directory, i.Name()))
+		if err != nil {
+			log.Fatal(err)
+		}
+		if _, err := io.Copy(output, input); err != nil {
+			log.Fatal(err)
+		}
+		bar.Increment()
+	}
+	bar.Finish()
+}
+
 func main() {
 	var err error
 	ZHTTP, err = zhttp.New(*Timeout, *Proxy)
@@ -296,47 +331,6 @@ func main() {
 		start(mpl)
 
 		log.Println("[+] Download succeed, saved to", directory, "cost:", time.Now().Sub(t))
+		combinedFile()
 	}
 }
-
-//func main() {
-//	compareStringNumber := func(str1, str2 string) bool {
-//		return sort.ExtractNumberFromString(str1, 0) < sort.ExtractNumberFromString(str2, 0)
-//	}
-//
-//	directory := "total_media_b3000000_0"
-//	dir, err := ioutil.ReadDir(directory)
-//	if err != nil {
-//		log.Fatal(err)
-//	}
-//
-//	var files []string
-//	for _, f := range dir {
-//		files = append(files, f.Name())
-//	}
-//
-//	output, err := os.OpenFile("total_media_b3000000_0.ts", os.O_CREATE|os.O_TRUNC|os.O_RDWR|os.O_APPEND, 0644)
-//	if err != nil {
-//		log.Fatal(err)
-//	}
-//	defer func(f *os.File) {
-//		err := f.Close()
-//		if err != nil {
-//			log.Fatal(err)
-//		}
-//	}(output)
-//
-//	sort.Compare(compareStringNumber).Sort(files)
-//	bar := pb.StartNew(len(files))
-//	for _, i := range files {
-//		input, err := os.Open(directory + "/" + i)
-//		if err != nil {
-//			log.Fatal(err)
-//		}
-//		if _, err := io.Copy(output, input); err != nil {
-//			log.Fatal(err)
-//		}
-//		bar.Increment()
-//	}
-//	bar.Finish()
-//}

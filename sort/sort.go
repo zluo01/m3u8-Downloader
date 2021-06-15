@@ -2,28 +2,33 @@ package sort
 
 import (
 	"log"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"unicode"
 )
 
-type Compare func(str1, str2 string) bool
+type Compare func(file1, file2 os.FileInfo) bool
 
-func (cmp Compare) Sort(strs []string) {
-	strSort := &strSorter{
-		strs: strs,
-		cmp:  cmp,
+func (cmp Compare) Sort(files []os.FileInfo) {
+	fileSort := &FileSorter{
+		files: files,
+		cmp:   cmp,
 	}
-	sort.Sort(strSort)
+	sort.Sort(fileSort)
 }
 
-type strSorter struct {
-	strs []string
-	cmp  func(str1, str2 string) bool
+type FileSorter struct {
+	files []os.FileInfo
+	cmp   func(file1, file2 os.FileInfo) bool
 }
 
-func ExtractNumberFromString(str string, size int) (num int) {
+func CompareStringNumber(file1, file2 os.FileInfo) bool {
+	return extractNumberFromString(file1.Name(), 0) < extractNumberFromString(file2.Name(), 0)
+}
+
+func extractNumberFromString(str string, size int) int {
 	strSlice := make([]string, 0)
 	for _, v := range str {
 		if unicode.IsDigit(v) {
@@ -33,25 +38,20 @@ func ExtractNumberFromString(str string, size int) (num int) {
 
 	if size == 0 { // default
 		num, err := strconv.Atoi(strings.Join(strSlice, ""))
-
 		if err != nil {
 			log.Fatal(err)
 		}
-
-		return num
-	} else {
-
-		num, err := strconv.Atoi(strSlice[size-1])
-		if err != nil {
-			log.Fatal(err)
-		}
-
 		return num
 	}
+	num, err := strconv.Atoi(strSlice[size-1])
+	if err != nil {
+		log.Fatal(err)
+	}
+	return num
 }
 
-func (s *strSorter) Len() int { return len(s.strs) }
+func (f *FileSorter) Len() int { return len(f.files) }
 
-func (s *strSorter) Swap(i, j int) { s.strs[i], s.strs[j] = s.strs[j], s.strs[i] }
+func (f *FileSorter) Swap(i, j int) { f.files[i], f.files[j] = f.files[j], f.files[i] }
 
-func (s *strSorter) Less(i, j int) bool { return s.cmp(s.strs[i], s.strs[j]) }
+func (f *FileSorter) Less(i, j int) bool { return f.cmp(f.files[i], f.files[j]) }
