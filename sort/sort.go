@@ -28,6 +28,7 @@ func CompareStringNumber(file1, file2 os.FileInfo) bool {
 	return extractNumberFromString(file1.Name(), 0) < extractNumberFromString(file2.Name(), 0)
 }
 
+// Todo fix situation with large number
 func extractNumberFromString(str string, size int) int {
 	strSlice := make([]string, 0)
 	for _, v := range str {

@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"flag"
-	"fmt"
 	"github.com/cheggaaa/pb/v3"
 	"github.com/grafov/m3u8"
 	"io"
@@ -47,7 +46,7 @@ func init() {
 	flag.Parse()
 
 	if *URL == "" && *File == "" {
-		fmt.Println("You must set the -u or -f parameter")
+		log.Print("You must set the -u or -f parameter")
 		flag.Usage()
 	}
 
@@ -117,7 +116,7 @@ func download(args ...interface{}) {
 
 	data, err := Client.Get(segment.URI, headers, *Retry)
 	if err != nil {
-		log.Fatalln("[-] Download failed:", id, err)
+		log.Fatal("[-] Download failed:", id, err)
 	}
 
 	var keyURL, ivStr string
@@ -133,13 +132,13 @@ func download(args ...interface{}) {
 		var key, iv []byte
 		key, err = getKey(keyURL)
 		if err != nil {
-			log.Fatalln("[-] Download key failed:", keyURL, err)
+			log.Fatal("[-] Download key failed:", keyURL, err)
 		}
 
 		if ivStr != "" {
 			iv, err = hex.DecodeString(strings.TrimPrefix(ivStr, "0x"))
 			if err != nil {
-				log.Fatalln("[-] Decode iv failed:", err)
+				log.Fatal("[-] Decode iv failed:", err)
 			}
 		} else {
 			iv = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, byte(id)}
@@ -147,7 +146,7 @@ func download(args ...interface{}) {
 
 		data, err = decrypter.Decrypt(data, key, iv)
 		if err != nil {
-			log.Fatalln("[-] Decrypt failed:", err)
+			log.Fatal("[-] Decrypt failed:", err)
 		}
 	}
 
@@ -276,7 +275,7 @@ func main() {
 	var err error
 	Client, err = request.New(*Timeout, *Proxy)
 	if err != nil {
-		log.Fatalln("[-] Init failed:", err)
+		log.Fatal("[-] Init failed:", err)
 	}
 
 	t := time.Now()
@@ -285,24 +284,24 @@ func main() {
 	if *File != "" {
 		data, err = ioutil.ReadFile(*File)
 		if err != nil {
-			log.Fatalln("[-] Load m3u8 file failed:", err)
+			log.Fatal("[-] Load m3u8 file failed:", err)
 		}
 	} else {
 		data, err = DownloadM3u8(*URL)
 		if err != nil {
-			log.Fatalln("[-] Download m3u8 file failed:", err)
+			log.Fatal("[-] Download m3u8 file failed:", err)
 		}
 	}
 
 	mpl, err := ParseM3u8(data)
 	if err != nil {
-		log.Fatalln("[-] Parse m3u8 file failed:", err)
+		log.Fatal("[-] Parse m3u8 file failed:", err)
 	} else {
-		log.Println("[+] Parse m3u8 file succed")
+		log.Print("[+] Parse m3u8 file succeed")
 	}
 
 	if mpl.Count() > 0 {
-		log.Println("[+] Total", mpl.Count(), "files to download")
+		log.Print("[+] Total", mpl.Count(), "files to download")
 
 		if *OutFile == "" {
 			*OutFile = "total_" + filename(mpl.Segments[0].URI)
@@ -317,7 +316,7 @@ func main() {
 
 		start(mpl)
 
-		log.Println("[+] Download succeed, saved to", directory, "cost:", time.Now().Sub(t))
+		log.Print("[+] Download succeed, saved to", directory, "cost:", time.Now().Sub(t))
 		combinedFile()
 	}
 }

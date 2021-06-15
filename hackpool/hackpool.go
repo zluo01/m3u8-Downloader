@@ -33,9 +33,10 @@ func (c *HackPool) Run(count int) {
 
 	wg.Add(c.numGo)
 
-	bar := pb.StartNew(count)
+	bar := pb.New(count)
 	for i := 0; i < c.numGo; i++ {
 		go func(bar *pb.ProgressBar) {
+			bar.Start()
 			for v := range c.messages {
 				bar.Increment()
 				c.function(v...)

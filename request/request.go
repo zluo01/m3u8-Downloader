@@ -41,8 +41,9 @@ func (r *ReqClient) Get(url string, headers map[string]string, retry int) ([]byt
 	defer fasthttp.ReleaseRequest(req)
 	defer fasthttp.ReleaseResponse(resp)
 
+	var err error
 	for i := 0; i < retry; i++ {
-		if err := fasthttp.Do(req, resp); err != nil {
+		if err = fasthttp.Do(req, resp); err != nil {
 			continue
 		}
 
@@ -54,5 +55,5 @@ func (r *ReqClient) Get(url string, headers map[string]string, retry int) ([]byt
 
 		return body, nil
 	}
-	return nil, errors.New("fail with request: " + url)
+	return nil, err
 }
