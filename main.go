@@ -106,8 +106,8 @@ func start(mpl *m3u8.MediaPlaylist) {
 		}()
 	}
 
-	bar := pb.StartNew(count)
-	for i := 0; i < count; i++ {
+	bar := pb.StartNew(count - *Start)
+	for i := *Start; i < count; i++ {
 		ch <- []interface{}{i, mpl.Segments[i], mpl.Key}
 		bar.Increment()
 	}
