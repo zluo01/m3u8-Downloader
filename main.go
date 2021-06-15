@@ -4,162 +4,89 @@ import (
 	"bytes"
 	"encoding/hex"
 	"errors"
+	"flag"
 	"fmt"
+	"github.com/grafov/m3u8"
 	"io/ioutil"
 	"log"
 	"m3u8-Downloader-Go/decrypter"
-	"m3u8-Downloader-Go/joiner"
+	"m3u8-Downloader-Go/hackpool"
 	"m3u8-Downloader-Go/zhttp"
 	"net/url"
+	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/grafov/m3u8"
-	"github.com/greyh4t/hackpool"
-	"github.com/guonaihong/clop"
 )
 
 var (
 	ZHTTP        *zhttp.Zhttp
-	JOINER       *joiner.Joiner
-	conf         *Conf
 	keyCache     = map[string][]byte{}
 	keyCacheLock sync.Mutex
 	headers      map[string]string
+	directory    string
 )
 
-type Conf struct {
-	URL       string        `clop:"-u; --url" usage:"url of m3u8 file"`
-	File      string        `clop:"-f; --m3u8-file" usage:"local m3u8 file"`
-	ThreadNum int           `clop:"-n; --thread-number" usage:"thread number" default:"10"`
-	OutFile   string        `clop:"-o; --out-file" usage:"out file"`
-	Retry     int           `clop:"-r; --retry" usage:"number of retries" default:"3"`
-	Timeout   time.Duration `clop:"-t; --timeout" usage:"timeout" default:"30s"`
-	Proxy     string        `clop:"-p; --proxy" usage:"proxy. Example: http://127.0.0.1:8080"`
-	Headers   []string      `clop:"-H; --header; greedy" usage:"http header. Example: Referer:http://www.example.com"`
-	headers   map[string]string
-}
+var (
+	URL       = flag.String("u", "", "url of m3u8 file")
+	File      = flag.String("f", "", "local m3u8 file")
+	ThreadNum = flag.Int("n", 10, "thread number")
+	OutFile   = flag.String("o", "", "out file")
+	Retry     = flag.Int("r", 3, "number of retries")
+	Timeout   = flag.Duration("t", time.Second*30, "timeout")
+	Proxy     = flag.String("p", "", "proxy. Example: http://127.0.0.1:8080")
+	Headers   = flag.String("H", "", "http header. Example: Referer:https://www.example.com")
+)
 
 func init() {
-	conf = &Conf{}
-	clop.CommandLine.SetExit(true)
-	clop.Bind(&conf)
+	flag.Parse()
 
-	checkConf()
+	if *URL == "" && *File == "" {
+		fmt.Println("You must set the -u or -f parameter")
+		flag.Usage()
+	}
 
-	if len(conf.Headers) > 0 {
-		conf.headers = map[string]string{}
-		for _, header := range conf.Headers {
+	if *ThreadNum <= 0 {
+		*ThreadNum = 10
+	}
+
+	if *Retry <= 0 {
+		*Retry = 1
+	}
+
+	if *Timeout <= 0 {
+		*Timeout = time.Second * 30
+	}
+
+	if len(*Headers) > 0 {
+		headers = map[string]string{}
+		for _, header := range strings.Split(*Headers, ";") {
 			s := strings.SplitN(header, ":", 2)
 			key := strings.TrimRight(s[0], " ")
 			if len(s) == 2 {
-				conf.headers[key] = strings.TrimLeft(s[1], " ")
+				headers[key] = strings.TrimLeft(s[1], " ")
 			} else {
-				conf.headers[key] = ""
+				headers[key] = ""
 			}
 		}
-	}
-}
-
-func checkConf() {
-	if conf.URL == "" && conf.File == "" {
-		fmt.Println("You must set the -u or -f parameter")
-		clop.Usage()
-	}
-
-	if conf.ThreadNum <= 0 {
-		conf.ThreadNum = 10
-	}
-
-	if conf.Retry <= 0 {
-		conf.Retry = 1
-	}
-
-	if conf.Timeout <= 0 {
-		conf.Timeout = time.Second * 30
 	}
 }
 
 func start(mpl *m3u8.MediaPlaylist) {
-	pool := hackpool.New(conf.ThreadNum, download)
+	pool := hackpool.New(*ThreadNum, download)
 
-	go func() {
-		var count = int(mpl.Count())
+	var count = int(mpl.Count())
+	go func(count int) {
 		for i := 0; i < count; i++ {
 			pool.Push(i, mpl.Segments[i], mpl.Key)
 		}
 		pool.CloseQueue()
-	}()
+	}(count)
 
-	go pool.Run()
-}
-
-func downloadM3u8(m3u8URL string) ([]byte, error) {
-	statusCode, data, err := ZHTTP.Get(m3u8URL, conf.headers, conf.Retry)
-	if err != nil {
-		return nil, err
-	}
-
-	if statusCode/100 != 2 || len(data) == 0 {
-		return nil, errors.New("http code: " + strconv.Itoa(statusCode))
-	}
-
-	return data, nil
-}
-
-func parseM3u8(data []byte) (*m3u8.MediaPlaylist, error) {
-	playlist, listType, err := m3u8.Decode(*bytes.NewBuffer(data), true)
-	if err != nil {
-		return nil, err
-	}
-
-	if listType == m3u8.MEDIA {
-		var obj *url.URL
-		if conf.URL != "" {
-			obj, err = url.Parse(conf.URL)
-			if err != nil {
-				return nil, errors.New("parse m3u8 url failed: " + err.Error())
-			}
-		}
-
-		mpl := playlist.(*m3u8.MediaPlaylist)
-
-		if mpl.Key != nil && mpl.Key.URI != "" {
-			uri, err := formatURI(obj, mpl.Key.URI)
-			if err != nil {
-				return nil, err
-			}
-			mpl.Key.URI = uri
-		}
-
-		count := int(mpl.Count())
-		for i := 0; i < count; i++ {
-			segment := mpl.Segments[i]
-
-			uri, err := formatURI(obj, segment.URI)
-			if err != nil {
-				return nil, err
-			}
-			segment.URI = uri
-
-			if segment.Key != nil && segment.Key.URI != "" {
-				uri, err := formatURI(obj, segment.Key.URI)
-				if err != nil {
-					return nil, err
-				}
-				segment.Key.URI = uri
-			}
-
-			mpl.Segments[i] = segment
-		}
-
-		return mpl, nil
-	}
-
-	return nil, errors.New("unsupport m3u8 type")
+	pool.Run(count)
 }
 
 func getKey(url string) ([]byte, error) {
@@ -171,7 +98,7 @@ func getKey(url string) ([]byte, error) {
 		return key, nil
 	}
 
-	statusCode, key, err := ZHTTP.Get(url, headers, conf.Retry)
+	statusCode, key, err := ZHTTP.Get(url, headers, *Retry)
 	if err != nil {
 		return nil, err
 	}
@@ -190,7 +117,7 @@ func download(args ...interface{}) {
 	segment := args[1].(*m3u8.MediaSegment)
 	globalKey := args[2].(*m3u8.Key)
 
-	statusCode, data, err := ZHTTP.Get(segment.URI, headers, conf.Retry)
+	statusCode, data, err := ZHTTP.Get(segment.URI, headers, *Retry)
 	if err != nil {
 		log.Fatalln("[-] Download failed:", id, err)
 	}
@@ -230,9 +157,80 @@ func download(args ...interface{}) {
 		}
 	}
 
-	log.Println("[+] Download succed:", id, segment.URI)
+	if err := ioutil.WriteFile(path.Join(directory, filename(segment.URI)), data, 0644); err != nil {
+		log.Fatal(err)
+	}
+}
 
-	JOINER.Join(id, data)
+func filename(u string) string {
+	obj, _ := url.Parse(u)
+	_, filename := filepath.Split(obj.Path)
+	return filename
+}
+
+func DownloadM3u8(m3u8URL string) ([]byte, error) {
+	statusCode, data, err := ZHTTP.Get(m3u8URL, headers, *Retry)
+	if err != nil {
+		return nil, err
+	}
+
+	if statusCode/100 != 2 || len(data) == 0 {
+		return nil, errors.New("http code: " + strconv.Itoa(statusCode))
+	}
+
+	return data, nil
+}
+
+func ParseM3u8(data []byte) (*m3u8.MediaPlaylist, error) {
+	playlist, listType, err := m3u8.Decode(*bytes.NewBuffer(data), true)
+	if err != nil {
+		return nil, err
+	}
+
+	if listType == m3u8.MEDIA {
+		var obj *url.URL
+		if *URL != "" {
+			obj, err = url.Parse(*URL)
+			if err != nil {
+				return nil, errors.New("parse m3u8 url failed: " + err.Error())
+			}
+		}
+
+		mpl := playlist.(*m3u8.MediaPlaylist)
+
+		if mpl.Key != nil && mpl.Key.URI != "" {
+			uri, err := formatURI(obj, mpl.Key.URI)
+			if err != nil {
+				return nil, err
+			}
+			mpl.Key.URI = uri
+		}
+
+		count := int(mpl.Count())
+		for i := 0; i < count; i++ {
+			segment := mpl.Segments[i]
+
+			uri, err := formatURI(obj, segment.URI)
+			if err != nil {
+				return nil, err
+			}
+			segment.URI = uri
+
+			if segment.Key != nil && segment.Key.URI != "" {
+				uri, err := formatURI(obj, segment.Key.URI)
+				if err != nil {
+					return nil, err
+				}
+				segment.Key.URI = uri
+			}
+
+			mpl.Segments[i] = segment
+		}
+
+		return mpl, nil
+	}
+
+	return nil, errors.New("unsupported m3u8 type")
 }
 
 func formatURI(base *url.URL, u string) (string, error) {
@@ -241,7 +239,7 @@ func formatURI(base *url.URL, u string) (string, error) {
 	}
 
 	if base == nil {
-		return "", errors.New("you must set m3u8 url for " + conf.File + " to download")
+		return "", errors.New("you must set m3u8 url for " + *File + " to download")
 	}
 
 	obj, err := base.Parse(u)
@@ -252,15 +250,9 @@ func formatURI(base *url.URL, u string) (string, error) {
 	return obj.String(), nil
 }
 
-func filename(u string) string {
-	obj, _ := url.Parse(u)
-	_, filename := filepath.Split(obj.Path)
-	return filename
-}
-
 func main() {
 	var err error
-	ZHTTP, err = zhttp.New(conf.Timeout, conf.Proxy)
+	ZHTTP, err = zhttp.New(*Timeout, *Proxy)
 	if err != nil {
 		log.Fatalln("[-] Init failed:", err)
 	}
@@ -268,46 +260,84 @@ func main() {
 	t := time.Now()
 
 	var data []byte
-	if conf.File != "" {
-		data, err = ioutil.ReadFile(conf.File)
+	if *File != "" {
+		data, err = ioutil.ReadFile(*File)
 		if err != nil {
 			log.Fatalln("[-] Load m3u8 file failed:", err)
 		}
 	} else {
-		data, err = downloadM3u8(conf.URL)
+		data, err = DownloadM3u8(*URL)
 		if err != nil {
 			log.Fatalln("[-] Download m3u8 file failed:", err)
 		}
 	}
 
-	mpl, err := parseM3u8(data)
+	mpl, err := ParseM3u8(data)
 	if err != nil {
 		log.Fatalln("[-] Parse m3u8 file failed:", err)
 	} else {
 		log.Println("[+] Parse m3u8 file succed")
 	}
 
-	outFile := conf.OutFile
-	if outFile == "" {
-		outFile = filename(mpl.Segments[0].URI)
-	}
-
-	JOINER, err = joiner.New(outFile)
-	if err != nil {
-		log.Fatalln("[-] Open file failed:", err)
-	} else {
-		log.Println("[+] Will save to", JOINER.Name())
-	}
-
 	if mpl.Count() > 0 {
 		log.Println("[+] Total", mpl.Count(), "files to download")
 
+		directory := *OutFile
+		if directory == "" {
+			directory = "total_" + filename(mpl.Segments[0].URI)
+			directory = strings.Split(directory, ".")[0]
+		}
+
+		if _, err := os.Stat(directory); os.IsNotExist(err) {
+			if err := os.Mkdir(directory, 0644); err != nil {
+				log.Fatal(err)
+			}
+		}
+
 		start(mpl)
 
-		err = JOINER.Run(int(mpl.Count()))
-		if err != nil {
-			log.Fatalln("[-] Write to file failed:", err)
-		}
-		log.Println("[+] Download succed, saved to", JOINER.Name(), "cost:", time.Now().Sub(t))
+		log.Println("[+] Download succeed, saved to", directory, "cost:", time.Now().Sub(t))
 	}
 }
+
+//func main() {
+//	compareStringNumber := func(str1, str2 string) bool {
+//		return sort.ExtractNumberFromString(str1, 0) < sort.ExtractNumberFromString(str2, 0)
+//	}
+//
+//	directory := "total_media_b3000000_0"
+//	dir, err := ioutil.ReadDir(directory)
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//
+//	var files []string
+//	for _, f := range dir {
+//		files = append(files, f.Name())
+//	}
+//
+//	output, err := os.OpenFile("total_media_b3000000_0.ts", os.O_CREATE|os.O_TRUNC|os.O_RDWR|os.O_APPEND, 0644)
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//	defer func(f *os.File) {
+//		err := f.Close()
+//		if err != nil {
+//			log.Fatal(err)
+//		}
+//	}(output)
+//
+//	sort.Compare(compareStringNumber).Sort(files)
+//	bar := pb.StartNew(len(files))
+//	for _, i := range files {
+//		input, err := os.Open(directory + "/" + i)
+//		if err != nil {
+//			log.Fatal(err)
+//		}
+//		if _, err := io.Copy(output, input); err != nil {
+//			log.Fatal(err)
+//		}
+//		bar.Increment()
+//	}
+//	bar.Finish()
+//}
