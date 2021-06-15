@@ -13,20 +13,19 @@ import (
 	"log"
 	"m3u8-Downloader-Go/decrypter"
 	"m3u8-Downloader-Go/hackpool"
+	"m3u8-Downloader-Go/request"
 	"m3u8-Downloader-Go/sort"
-	"m3u8-Downloader-Go/zhttp"
 	"net/url"
 	"os"
 	"path"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
 var (
-	ZHTTP        *zhttp.Zhttp
+	Client       *request.ReqClient
 	keyCache     = map[string][]byte{}
 	keyCacheLock sync.Mutex
 	headers      map[string]string
@@ -101,13 +100,9 @@ func getKey(url string) ([]byte, error) {
 		return key, nil
 	}
 
-	statusCode, key, err := ZHTTP.Get(url, headers, *Retry)
+	key, err := Client.Get(url, headers, *Retry)
 	if err != nil {
 		return nil, err
-	}
-
-	if statusCode/100 != 2 || len(key) == 0 {
-		return nil, errors.New("http code: " + strconv.Itoa(statusCode))
 	}
 
 	keyCache[url] = key
@@ -120,13 +115,9 @@ func download(args ...interface{}) {
 	segment := args[1].(*m3u8.MediaSegment)
 	globalKey := args[2].(*m3u8.Key)
 
-	statusCode, data, err := ZHTTP.Get(segment.URI, headers, *Retry)
+	data, err := Client.Get(segment.URI, headers, *Retry)
 	if err != nil {
 		log.Fatalln("[-] Download failed:", id, err)
-	}
-
-	if statusCode/100 != 2 || len(data) == 0 {
-		log.Fatalln("[-] Download failed, http code:", statusCode)
 	}
 
 	var keyURL, ivStr string
@@ -160,7 +151,7 @@ func download(args ...interface{}) {
 		}
 	}
 
-	if err := ioutil.WriteFile(path.Join(directory, filename(segment.URI)), data, 0644); err != nil {
+	if err := ioutil.WriteFile(path.Join(directory, filename(segment.URI)), data, 0755); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -172,13 +163,9 @@ func filename(u string) string {
 }
 
 func DownloadM3u8(m3u8URL string) ([]byte, error) {
-	statusCode, data, err := ZHTTP.Get(m3u8URL, headers, *Retry)
+	data, err := Client.Get(m3u8URL, headers, *Retry)
 	if err != nil {
 		return nil, err
-	}
-
-	if statusCode/100 != 2 || len(data) == 0 {
-		return nil, errors.New("http code: " + strconv.Itoa(statusCode))
 	}
 
 	return data, nil
@@ -287,7 +274,7 @@ func combinedFile() {
 
 func main() {
 	var err error
-	ZHTTP, err = zhttp.New(*Timeout, *Proxy)
+	Client, err = request.New(*Timeout, *Proxy)
 	if err != nil {
 		log.Fatalln("[-] Init failed:", err)
 	}
@@ -323,7 +310,7 @@ func main() {
 		}
 
 		if _, err := os.Stat(directory); os.IsNotExist(err) {
-			if err := os.Mkdir(directory, 0644); err != nil {
+			if err := os.Mkdir(directory, 0755); err != nil {
 				log.Fatal(err)
 			}
 		}
