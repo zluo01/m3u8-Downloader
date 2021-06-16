@@ -81,15 +81,15 @@ func init() {
 }
 
 func start(mpl *m3u8.MediaPlaylist) {
-	var count = int(mpl.Count())
+	count := int(mpl.Count())
 
 	// make sure buffer size is greater than go routine size
-	var size = count
+	size := count
 	if size <= *ThreadNum {
 		size = *ThreadNum + 1
 	}
 
-	var ch = make(chan []interface{}, size)
+	ch := make(chan []interface{}, size)
 	var wg sync.WaitGroup
 
 	wg.Add(*ThreadNum)
