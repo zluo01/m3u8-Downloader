@@ -1,4 +1,4 @@
-# m3u8-Downloader-Go
+# m3u8-Downloader
 Download m3u8 media with multithreading, support decrypt
 
 # How to use
