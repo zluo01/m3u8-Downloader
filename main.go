@@ -266,36 +266,38 @@ func formatURI(base *url.URL, u string) (string, error) {
 	return obj.String(), nil
 }
 
-func combinedFiles() {
+func combinedFiles() error {
 	files, err := ioutil.ReadDir(directory)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	output, err := os.OpenFile(*OutFile, os.O_CREATE|os.O_TRUNC|os.O_RDWR|os.O_APPEND, 0644)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
-	defer func(f *os.File) {
-		err := f.Close()
-		if err != nil {
-			log.Fatal(err)
-		}
-	}(output)
 
 	sort.Compare(sort.CompareStringNumber).Sort(files)
 	bar := pb.StartNew(len(files))
 	for _, i := range files {
 		input, err := os.Open(path.Join(directory, i.Name()))
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		if _, err := io.Copy(output, input); err != nil {
-			log.Fatal(err)
+			return err
+		}
+		if err := input.Close(); err != nil {
+			return err
 		}
 		bar.Increment()
 	}
 	bar.Finish()
+
+	if err := output.Close(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func cleanupDirectory() error {
@@ -362,8 +364,8 @@ func main() {
 			directory = strings.Split(*OutFile, ".")[0]
 		}
 
-		if _, err := os.Stat(directory); os.IsNotExist(err) {
-			if err := os.Mkdir(directory, 0755); err != nil {
+		if _, err = os.Stat(directory); os.IsNotExist(err) {
+			if err = os.Mkdir(directory, 0755); err != nil {
 				log.Fatal(err)
 			}
 		}
@@ -371,7 +373,9 @@ func main() {
 		start(mpl)
 		log.Print("[+] Download succeed, saved to ", directory, ", cost:", time.Now().Sub(t))
 
-		combinedFiles()
+		if err = combinedFiles(); err != nil {
+			log.Fatal("[-] Fail to combine files: ", err)
+		}
 		log.Print("[+] Files combined to ", *OutFile)
 
 		if err := cleanupDirectory(); err != nil {
