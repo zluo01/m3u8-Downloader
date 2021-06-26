@@ -93,6 +93,7 @@ func start(mpl *m3u8.MediaPlaylist) {
 	var wg sync.WaitGroup
 
 	wg.Add(*ThreadNum)
+	bar := pb.StartNew(count - *Start)
 	for i := 0; i < *ThreadNum; i++ {
 		go func() {
 			for {
@@ -102,14 +103,13 @@ func start(mpl *m3u8.MediaPlaylist) {
 					return
 				}
 				download(args) // do the thing
+				bar.Increment()
 			}
 		}()
 	}
 
-	bar := pb.StartNew(count - *Start)
 	for i := *Start; i < count; i++ {
 		ch <- []interface{}{i, mpl.Segments[i], mpl.Key}
-		bar.Increment()
 	}
 
 	close(ch)
