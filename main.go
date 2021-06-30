@@ -378,9 +378,9 @@ func main() {
 		}
 		log.Print("[+] Files combined to ", *OutFile)
 
-		//if err := cleanupDirectory(); err != nil {
-		//	log.Fatal("[-] Fail to delete directory: ", directory, ", Error: ", err)
-		//}
-		//log.Print("[+] Successfully cleanup directory: ", directory)
+		if err := cleanupDirectory(); err != nil {
+			log.Fatal("[-] Fail to delete directory: ", directory, ", Error: ", err)
+		}
+		log.Print("[+] Successfully cleanup directory: ", directory)
 	}
 }
