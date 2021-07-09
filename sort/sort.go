@@ -9,9 +9,9 @@ import (
 	"unicode"
 )
 
-type Compare func(file1, file2 os.FileInfo) bool
+type Compare func(file1, file2 os.DirEntry) bool
 
-func (cmp Compare) Sort(files []os.FileInfo) {
+func (cmp Compare) Sort(files []os.DirEntry) {
 	fileSort := &FileSorter{
 		files: files,
 		cmp:   cmp,
@@ -20,11 +20,11 @@ func (cmp Compare) Sort(files []os.FileInfo) {
 }
 
 type FileSorter struct {
-	files []os.FileInfo
-	cmp   func(file1, file2 os.FileInfo) bool
+	files []os.DirEntry
+	cmp   func(file1, file2 os.DirEntry) bool
 }
 
-func CompareStringNumber(file1, file2 os.FileInfo) bool {
+func CompareStringNumber(file1, file2 os.DirEntry) bool {
 	return extractNumberFromString(file1.Name(), 0).Cmp(extractNumberFromString(file2.Name(), 0)) == -1
 }
 

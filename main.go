@@ -8,14 +8,12 @@ import (
 	"github.com/cheggaaa/pb/v3"
 	"github.com/grafov/m3u8"
 	"io"
-	"io/ioutil"
 	"log"
 	"m3u8-Downloader/decrypter"
 	"m3u8-Downloader/request"
 	"m3u8-Downloader/sort"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -81,20 +79,24 @@ func init() {
 }
 
 func start(mpl *m3u8.MediaPlaylist) {
-	count := int(mpl.Count())
+	var wg sync.WaitGroup
+	var count, size, i int
+	var ch chan []interface{}
+	var bar *pb.ProgressBar
+
+	count = int(mpl.Count())
 
 	// make sure buffer size is greater than go routine size
-	size := count
+	size = count
 	if size <= *ThreadNum {
 		size = *ThreadNum + 1
 	}
 
-	ch := make(chan []interface{}, size)
-	var wg sync.WaitGroup
+	ch = make(chan []interface{}, size)
 
 	wg.Add(*ThreadNum)
-	bar := pb.StartNew(count - *Start)
-	for i := 0; i < *ThreadNum; i++ {
+	bar = pb.StartNew(count - *Start)
+	for i = 0; i < *ThreadNum; i++ {
 		go func() {
 			for {
 				args, ok := <-ch
@@ -108,7 +110,7 @@ func start(mpl *m3u8.MediaPlaylist) {
 		}()
 	}
 
-	for i := *Start; i < count; i++ {
+	for i = *Start; i < count; i++ {
 		ch <- []interface{}{i, mpl.Segments[i], mpl.Key}
 	}
 
@@ -118,15 +120,18 @@ func start(mpl *m3u8.MediaPlaylist) {
 }
 
 func getKey(url string) ([]byte, error) {
+	var key []byte
+	var err error
+
 	keyCacheLock.Lock()
 	defer keyCacheLock.Unlock()
 
-	key := keyCache[url]
+	key = keyCache[url]
 	if key != nil {
 		return key, nil
 	}
 
-	key, err := Client.Get(url, headers, *Retry)
+	key, err = Client.Get(url, headers, *Retry)
 	if err != nil {
 		return nil, err
 	}
@@ -177,15 +182,17 @@ func download(args []interface{}) {
 		}
 	}
 
-	if err := ioutil.WriteFile(path.Join(directory, filename(segment.URI)), data, 0755); err != nil {
+	if err = os.WriteFile(filepath.Join(directory, filename(segment.URI)), data, 0755); err != nil {
 		log.Fatal(err)
 	}
 }
 
 func filename(u string) string {
-	obj, _ := url.Parse(u)
-	_, filename := filepath.Split(obj.Path)
-	return filename
+	obj, err := url.Parse(u)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return filepath.Base(obj.Path)
 }
 
 func DownloadM3u8(m3u8URL string) ([]byte, error) {
@@ -267,12 +274,16 @@ func formatURI(base *url.URL, u string) (string, error) {
 }
 
 func combinedFiles() error {
-	files, err := ioutil.ReadDir(directory)
+	var input, output *os.File
+	var files []os.DirEntry
+	var err error
+
+	files, err = os.ReadDir(directory)
 	if err != nil {
 		return err
 	}
 
-	output, err := os.OpenFile(*OutFile, os.O_CREATE|os.O_TRUNC|os.O_RDWR|os.O_APPEND, 0644)
+	output, err = os.OpenFile(*OutFile, os.O_CREATE|os.O_TRUNC|os.O_RDWR|os.O_APPEND, 0644)
 	if err != nil {
 		return err
 	}
@@ -280,21 +291,21 @@ func combinedFiles() error {
 	sort.Compare(sort.CompareStringNumber).Sort(files)
 	bar := pb.StartNew(len(files))
 	for _, i := range files {
-		input, err := os.Open(path.Join(directory, i.Name()))
+		input, err = os.Open(filepath.Join(directory, i.Name()))
 		if err != nil {
 			return err
 		}
-		if _, err := io.Copy(output, input); err != nil {
+		if _, err = io.Copy(output, input); err != nil {
 			return err
 		}
-		if err := input.Close(); err != nil {
+		if err = input.Close(); err != nil {
 			return err
 		}
 		bar.Increment()
 	}
 	bar.Finish()
 
-	if err := output.Close(); err != nil {
+	if err = output.Close(); err != nil {
 		return err
 	}
 	return nil
@@ -316,11 +327,11 @@ func cleanupDirectory() error {
 		}
 	}
 
-	if err := d.Close(); err != nil {
+	if err = d.Close(); err != nil {
 		return err
 	}
 
-	if err := os.Remove(directory); err != nil {
+	if err = os.Remove(directory); err != nil {
 		return err
 	}
 
@@ -338,7 +349,7 @@ func main() {
 
 	var data []byte
 	if *File != "" {
-		data, err = ioutil.ReadFile(*File)
+		data, err = os.ReadFile(*File)
 		if err != nil {
 			log.Fatal("[-] Load m3u8 file failed: ", err)
 		}
@@ -362,6 +373,8 @@ func main() {
 		if *OutFile == "" {
 			*OutFile = "total_" + filename(mpl.Segments[0].URI)
 			directory = strings.Split(*OutFile, ".")[0]
+		} else {
+			directory = strings.Split(*OutFile, ".")[0]
 		}
 
 		if _, err = os.Stat(directory); os.IsNotExist(err) {
@@ -378,7 +391,7 @@ func main() {
 		}
 		log.Print("[+] Files combined to ", *OutFile)
 
-		if err := cleanupDirectory(); err != nil {
+		if err = cleanupDirectory(); err != nil {
 			log.Fatal("[-] Fail to delete directory: ", directory, ", Error: ", err)
 		}
 		log.Print("[+] Successfully cleanup directory: ", directory)
