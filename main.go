@@ -32,7 +32,7 @@ var (
 	URL       = flag.String("u", "", "url of m3u8 file")
 	File      = flag.String("f", "", "local m3u8 file")
 	ThreadNum = flag.Int("n", 10, "thread number")
-	OutFile   = flag.String("o", "", "out file")
+	OutFile   = flag.String("o", "", "custom output file name. Example: <EXAMPLE>.ts")
 	Retry     = flag.Int("r", 3, "number of retries")
 	Timeout   = flag.Duration("t", time.Second*30, "timeout")
 	Proxy     = flag.String("p", "", "proxy. Example: http://127.0.0.1:8080")
@@ -205,7 +205,13 @@ func DownloadM3u8(m3u8URL string) ([]byte, error) {
 }
 
 func ParseM3u8(data []byte) (*m3u8.MediaPlaylist, error) {
-	playlist, listType, err := m3u8.Decode(*bytes.NewBuffer(data), true)
+	var playlist m3u8.Playlist
+	var listType m3u8.ListType
+	var mpl *m3u8.MediaPlaylist
+	var uri string
+	var err error
+
+	playlist, listType, err = m3u8.Decode(*bytes.NewBuffer(data), true)
 	if err != nil {
 		return nil, err
 	}
@@ -219,10 +225,10 @@ func ParseM3u8(data []byte) (*m3u8.MediaPlaylist, error) {
 			}
 		}
 
-		mpl := playlist.(*m3u8.MediaPlaylist)
+		mpl = playlist.(*m3u8.MediaPlaylist)
 
 		if mpl.Key != nil && mpl.Key.URI != "" {
-			uri, err := formatURI(obj, mpl.Key.URI)
+			uri, err = formatURI(obj, mpl.Key.URI)
 			if err != nil {
 				return nil, err
 			}
@@ -233,26 +239,23 @@ func ParseM3u8(data []byte) (*m3u8.MediaPlaylist, error) {
 		for i := 0; i < count; i++ {
 			segment := mpl.Segments[i]
 
-			uri, err := formatURI(obj, segment.URI)
+			uri, err = formatURI(obj, segment.URI)
 			if err != nil {
 				return nil, err
 			}
 			segment.URI = uri
 
 			if segment.Key != nil && segment.Key.URI != "" {
-				uri, err := formatURI(obj, segment.Key.URI)
+				uri, err = formatURI(obj, segment.Key.URI)
 				if err != nil {
 					return nil, err
 				}
 				segment.Key.URI = uri
 			}
-
 			mpl.Segments[i] = segment
 		}
-
 		return mpl, nil
 	}
-
 	return nil, errors.New("unsupported m3u8 type")
 }
 
