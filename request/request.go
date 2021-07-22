@@ -2,14 +2,11 @@ package request
 
 import (
 	"errors"
-	"strconv"
-	"time"
-)
-
-import (
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
+	"strconv"
+	"time"
 )
 
 type ReqClient struct {
@@ -66,7 +63,7 @@ func (r *ReqClient) Get(url string, headers map[string]string, retry int) ([]byt
 			continue
 		}
 
-		body, err = ioutil.ReadAll(resp.Body)
+		body, err = io.ReadAll(resp.Body)
 		resp.Body.Close()
 
 		if err != nil {
