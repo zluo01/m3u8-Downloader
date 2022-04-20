@@ -48,6 +48,9 @@ func init() {
 		flag.Usage()
 	}
 
+	*URL = strings.TrimSpace(*URL)
+	*File = strings.TrimSpace(*File)
+
 	if *ThreadNum <= 0 {
 		*ThreadNum = 10
 	}
