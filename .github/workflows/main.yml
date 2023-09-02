@@ -21,7 +21,7 @@ jobs:
         go-version: 'stable'
 
     - name: Build
-      run: go build -v ./...
+      run: go build -v
   deployment:
     runs-on: ubuntu-latest
     needs: [build]
@@ -41,4 +41,5 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v3
         with:
+          name: m3u8-Downloader
           path: m3u8-Downloader
