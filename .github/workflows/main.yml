@@ -42,4 +42,4 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: m3u8-Downloader
-          path: ./
+          path: ./m3u8-Downloader
