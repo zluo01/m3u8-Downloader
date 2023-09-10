@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"flag"
+	"fmt"
 	"github.com/cheggaaa/pb/v3"
 	"github.com/grafov/m3u8"
 	"io"
@@ -185,7 +186,7 @@ func download(args []interface{}) {
 		}
 	}
 
-	if err = os.WriteFile(filepath.Join(directory, filename(segment.URI)), data, 0755); err != nil {
+	if err = os.WriteFile(filepath.Join(directory, fmt.Sprintf("%d.ts", id)), data, 0755); err != nil {
 		log.Fatal(err)
 	}
 }
